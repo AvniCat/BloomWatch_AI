@@ -1,0 +1,4 @@
+model,n_iterations,accuracy,precision,recall,f1,roc_auc,tn,fp,fn,tp,train_n,test_n
+LogisticRegression,28,0.766,0.4681,0.7333,0.5714,0.836,86,25,8,22,370,141
+RandomForest,500,0.8652,0.72,0.6,0.6545,0.8754,104,7,12,18,370,141
+XGBoost,175,0.7589,0.4565,0.7,0.5526,0.8387,86,25,9,21,370,141

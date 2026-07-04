@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# large raw files that don't belong in the repo
+*.nc
+*.hdf
+*.pdf
+_text/
+_hits/
+_targets.txt
+_modis_cache/
+_imd_cache/
+_modis_pipeline.log
+
+# credentials (belt-and-braces — .netrc lives in $HOME anyway)
+.netrc
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
