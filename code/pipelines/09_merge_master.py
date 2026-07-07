@@ -1,12 +1,17 @@
-"""Merge datasets 1-4 into a single long-format CSV.
+"""Merge the India-focused datasets 1–3 into a single long-format CSV.
 
-Design rationale: The four datasets differ in geography (India vs USA),
-time granularity (event / annual / monthly / daily), and native shape
-(long vs wide). A row-wise JOIN would drop most rows. Instead we do a
-STACK (concat) with a harmonized column schema, plus a 'dataset' tag so
-the user can filter/pivot downstream.
+The USEPA `provisional_habs` dataset (previously dataset_4) has been removed
+from the master merge because it is US freshwater data and does not align
+with this project's Kerala + Karnataka focus. It is retained separately in
+`reference_data/dataset_4_usepa_reference_analog.csv` for future
+transfer-learning experiments.
 
-Output: dataset_merged.csv
+The three datasets included here differ in time granularity (event / annual /
+seasonal / monthly) and native shape (long vs wide), so we STACK (concat)
+them with a harmonized column schema plus a 'dataset' tag so the user can
+filter/pivot downstream.
+
+Output: dataset_master.csv
 Schema:
   dataset, source, country, region, sub_location,
   date, year, month, season_or_month, depth_or_layer,
@@ -15,7 +20,8 @@ Schema:
 """
 
 import pathlib as _pl
-_REPO_ROOT = _pl.Path(__file__).resolve().parents[1]
+# code/pipelines/xx_...py -> parents[2] is the repo root
+_REPO_ROOT = _pl.Path(__file__).resolve().parents[2]
 _DATA_DIR = _REPO_ROOT / "data"
 import pandas as pd, pathlib, sys
 
@@ -121,30 +127,9 @@ d3_rainy = pd.DataFrame({**common,
 })
 d3_out = pd.concat([d3_total, d3_maxday, d3_rainy], ignore_index=True)
 
-# ------------------------------ dataset_4 -----------------------------------
-d4 = pd.read_csv(ROOT / "dataset_4.csv")
-d4_out = pd.DataFrame({
-    "dataset": "dataset_4",
-    "source":  d4["source"],
-    "country": "USA",
-    "region":  d4["waterbody"],
-    "sub_location": "site=" + d4["site"].astype(str),
-    "date": d4["date"],
-    "year": d4["data_year"],
-    "month": pd.to_datetime(d4["date"], errors="coerce").dt.month,
-    "season_or_month": "",
-    "depth_or_layer": d4["depth"].astype(str),
-    "variable": d4["variable"],
-    "value_min":  d4["value_min"],
-    "value_max":  d4["value_max"],
-    "value_mean": d4["value_mean"],
-    "units": d4["units"],
-    "n_observations": d4["n_observations"],
-    "notes": "",
-})
-
 # ------------------------------ stack ---------------------------------------
-merged = pd.concat([d1_out, d2_out, d3_out, d4_out], ignore_index=True)[COLS]
+# NOTE: dataset_4 (USEPA) intentionally excluded — see module docstring.
+merged = pd.concat([d1_out, d2_out, d3_out], ignore_index=True)[COLS]
 merged = merged.sort_values(["dataset","country","region","year","month","variable"], na_position="last")
 merged.to_csv(OUT, index=False)
 

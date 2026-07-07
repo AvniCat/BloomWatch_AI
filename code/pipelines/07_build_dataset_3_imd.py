@@ -12,7 +12,7 @@ Output schema (mirrors dataset_2 style):
 """
 
 import pathlib as _pl
-_REPO_ROOT = _pl.Path(__file__).resolve().parents[1]
+_REPO_ROOT = _pl.Path(__file__).resolve().parents[2]
 _DATA_DIR = _REPO_ROOT / "data"
 import imdlib, xarray as xr, numpy as np, pandas as pd
 import pathlib, sys, gc, warnings, calendar

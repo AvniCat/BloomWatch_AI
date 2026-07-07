@@ -11,7 +11,7 @@ Approach:
 """
 
 import pathlib as _pl
-_REPO_ROOT = _pl.Path(__file__).resolve().parents[1]
+_REPO_ROOT = _pl.Path(__file__).resolve().parents[2]
 _DATA_DIR = _REPO_ROOT / "data"
 import pandas as pd, pathlib, glob, warnings
 

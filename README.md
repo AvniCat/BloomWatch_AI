@@ -20,8 +20,8 @@ hab-prediction/
 │       ├── 01…05  CMFRI PDF extraction
 │       ├── 06     MODIS-Aqua download + crop
 │       ├── 07     IMD rainfall download + crop
-│       ├── 08     USEPA HAB monitoring
-│       ├── 09     merge master (long)
+│       ├── 08     USEPA HAB monitoring (reference-only, not merged)
+│       ├── 09     merge master (long)  — India datasets 1-3 only
 │       └── 10     merge India monthly wide
 ├── data/
 │   ├── README.md                        sources, schemas, how to regenerate
@@ -97,10 +97,14 @@ full stack (raw CSVs, master, wide):
 ```bash
 python code/pipelines/06_build_dataset_2_modis.py   # needs Earthdata login
 python code/pipelines/07_build_dataset_3_imd.py
-python code/pipelines/08_build_dataset_4_epa.py
-python code/pipelines/09_merge_master.py
+python code/pipelines/09_merge_master.py            # merges India datasets 1-3
 python code/pipelines/10_merge_india_wide.py
 ```
+
+**Note on dataset_4 (USEPA):** The USEPA `provisional_habs` dataset is US
+freshwater data and is *not* merged into the India-focused master dataset.
+It is retained as a reference-only dataset (built by `08_build_dataset_4_epa.py`)
+for future transfer-learning experiments. See `data/README.md` for details.
 
 See `data/README.md` for source URLs, expected schemas, and licence notes.
 

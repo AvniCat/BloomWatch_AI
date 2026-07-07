@@ -1,7 +1,7 @@
 """Dump the top HAB-dense pages from each report into a single file for reading."""
 
 import pathlib as _pl
-_REPO_ROOT = _pl.Path(__file__).resolve().parents[1]
+_REPO_ROOT = _pl.Path(__file__).resolve().parents[2]
 _DATA_DIR = _REPO_ROOT / "data"
 import pathlib, re, json, collections
 
