@@ -1,7 +1,11 @@
 """Shared feature engineering for the HAB bloom classifier scripts.
 
-Builds lag features from the MODIS+IMD monthly wide table, defines the bloom
-label (chl_a > 2 mg/m^3), and splits temporally (train 2002-2018, test 2019+).
+Loads the revised master training-ready dataset (`revised_master_dataset.csv`
+built by `code/pipelines/12_build_revised_master.py`), engineers lag features,
+and splits temporally (train 2002-2018, test 2019+).
+
+Falls back to the older `dataset_merged_india_monthly_wide.csv` if the revised
+file is not present, so old checkouts still run.
 
 Path resolution is relative to the repo root (three levels up from this file:
 code/src/feature_prep.py -> repo/), so the code runs identically on a laptop,
@@ -19,19 +23,47 @@ MODELS_DIR  = RESULTS_DIR / "models"
 PRED_DIR    = RESULTS_DIR / "predictions"
 IMP_DIR     = RESULTS_DIR / "feature_importance"
 
-WIDE_TABLE = DATA_DIR / "dataset_merged_india_monthly_wide.csv"
+REVISED_TABLE = DATA_DIR / "revised_master_dataset.csv"
+LEGACY_TABLE  = DATA_DIR / "dataset_merged_india_monthly_wide.csv"
 
 BLOOM_THRESHOLD = 2.0    # mg/m^3
 TRAIN_END_YEAR  = 2018
 
+# Which label column to train on:
+#   "bloom"              -> chlor_a > 2 mg/m^3 (derived, MODIS-only)
+#   "bloom_or_documented" -> above OR a documented CMFRI/lit HAB event
+DEFAULT_LABEL = "bloom_or_documented"
 
-def build_features(path=WIDE_TABLE):
-    """Return (features_list, train_df, test_df) with 'bloom' target column."""
+
+def build_features(path=None, label=DEFAULT_LABEL):
+    """Return (features_list, train_df, test_df) with target label column.
+
+    Uses `revised_master_dataset.csv` if available (adds HAB-event features),
+    else falls back to the legacy wide table.
+    """
+    if path is None:
+        path = REVISED_TABLE if REVISED_TABLE.exists() else LEGACY_TABLE
+
     df = pd.read_csv(path)
     df = df.sort_values(["region", "year", "month"]).reset_index(drop=True)
     df = df.dropna(subset=["chlor_a_mean"]).copy()
-    df["bloom"] = (df["chlor_a_mean"] > BLOOM_THRESHOLD).astype(int)
 
+    # Ensure the label column exists (recompute for legacy compatibility)
+    if "bloom" not in df.columns:
+        df["bloom"] = (df["chlor_a_mean"] > BLOOM_THRESHOLD).astype(int)
+    else:
+        df["bloom"] = df["bloom"].fillna(0).astype(int)
+
+    if "bloom_or_documented" not in df.columns:
+        # Legacy fallback — treat as identical to bloom
+        df["bloom_or_documented"] = df["bloom"]
+    else:
+        df["bloom_or_documented"] = df["bloom_or_documented"].fillna(0).astype(int)
+
+    if label not in df.columns:
+        raise ValueError(f"label column {label!r} not found in {path.name}")
+
+    # Environmental lag features
     lag_cols = [
         "sst_mean", "sst_min", "sst_max", "sst_std",
         "rainfall_mm_total_mean", "rainfall_mm_max_daily", "rainy_days_mean",
@@ -40,6 +72,7 @@ def build_features(path=WIDE_TABLE):
         for lag in (1, 2):
             df[f"{c}_lag{lag}"] = df.groupby("region")[c].shift(lag)
 
+    # Cyclic month encoding + region one-hot
     df["month_sin"] = np.sin(2 * np.pi * df["month"] / 12)
     df["month_cos"] = np.cos(2 * np.pi * df["month"] / 12)
     df["region_Kerala"]    = (df["region"] == "Kerala").astype(int)
@@ -49,7 +82,18 @@ def build_features(path=WIDE_TABLE):
                 + [f"{c}_lag{l}" for c in lag_cols for l in (1, 2)]
                 + ["month_sin", "month_cos", "region_Kerala", "region_Karnataka"])
 
-    df_model = df.dropna(subset=features + ["bloom"]).copy()
+    # HAB-event features (only present in the revised table)
+    hab_cols = [c for c in ("hab_event_documented", "hab_events_last_24mo")
+                if c in df.columns]
+    features.extend(hab_cols)
+
+    df_model = df.dropna(subset=features + [label]).copy()
+    # Standardise the target column name to 'bloom' for downstream compatibility.
+    # Drop the derived-only 'bloom' first if we're using a different label so
+    # there's no duplicate column after renaming.
+    if label != "bloom" and "bloom" in df_model.columns:
+        df_model = df_model.drop(columns=["bloom"])
+        df_model = df_model.rename(columns={label: "bloom"})
     train = df_model[df_model["year"] <= TRAIN_END_YEAR]
     test  = df_model[df_model["year"] >  TRAIN_END_YEAR]
     return features, train, test

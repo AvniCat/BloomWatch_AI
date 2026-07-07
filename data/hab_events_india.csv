@@ -1,0 +1,10 @@
+event_date,year,month,region,sub_location,species,density_cells_per_L,source,notes
+2004-09,2004,9,Kerala,southern Kerala coast,Cochlodinium,,"Padmakumar et al. (Indian J. Mar. Sci., 2012)","Documented Cochlodinium bloom off Kerala coast, autumn"
+2008-11,2008,11,Kerala,Kerala coastal waters,Karenia,,Padmakumar et al. review (2012),"Karenia mikimotoi bloom Kerala, post-monsoon"
+2015-04,2015,4,Karnataka,off Mangaluru,Trichodesmium,,CMFRI research bulletins,Pre-monsoon Trichodesmium bloom off Karnataka
+2016-09,2016,9,Kerala,Alappuzha coast,Cochlodinium,,CMFRI AR 2016-17 (narrative); popular press reports,Cochlodinium bloom Kerala coast; economic losses reported
+2019-11,2019,11,Karnataka,off Karwar,Noctiluca,,Karnataka Fisheries Dept advisories; published literature,Noctiluca scintillans bloom Karwar coast
+2020-08,2020,8,Kerala,Thopumpady,Pleurosigma,2100000.0,CMFRI AR 2020,Pleurosigma elongatum dominance driving high turbidity; p.162
+2022-05,2022,5,Karnataka,Iddya_Surathkal,Diatoma vulgaris,120000000.0,CMFRI AR 2022,Diatoma vulgaris bloom (1.20x10^5 cells/mL converted to cells/L); p.141
+2023-04,2023,4,Kerala,Station_3_20m_bloom,Trichodesmium,114200.0,CMFRI AR 2023,Trichodesmium sp. bloom; brownish-red water; p.42
+2024-03,2024,3,Kerala,algal_bloom_patch,Trichodesmium,1522000.0,CMFRI AR 2024,"Trichodesmium bloom (15.22 lakh cells/L); triggered by elevated SST, nutrient enrichment, low phosphate; p.162"
