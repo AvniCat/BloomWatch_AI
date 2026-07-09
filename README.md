@@ -2,7 +2,8 @@
 
 An AI early-warning system for **Harmful Algal Blooms (HABs)** along India's
 southwest coast, delivering weekly bloom-risk forecasts to shellfish farmer
-cooperatives via a multilingual WhatsApp chatbot.
+cooperatives through a purpose-built app with a built-in multilingual
+chatbot — no SMS or WhatsApp dependency.
 
 **Live at:** [github.com/AvniCat/BloomWatch_AI](https://github.com/AvniCat/BloomWatch_AI)
 
@@ -12,8 +13,10 @@ cooperatives via a multilingual WhatsApp chatbot.
   Kerala and Karnataka coasts.
 - Trained on 22 years of public data: NASA MODIS-Aqua satellite (SST +
   chlorophyll-a), IMD 0.25° gridded rainfall, and CMFRI in-situ observations.
-- Delivered to farmers as a multilingual WhatsApp chatbot — Kadal Mitra —
-  in Malayalam, Kannada, Hindi, and English.
+- Delivered to farmers through a purpose-built mobile app — Kadal Mitra —
+  with a built-in multilingual chatbot in Malayalam, Kannada, Hindi, and
+  English. The chatbot lives inside the app itself, not on SMS or WhatsApp,
+  so we control the interface, the data flow, and the offline experience.
 
 ## Modelling summary
 
