@@ -31,11 +31,18 @@ one-hot + HAB event history.
 **Split** — expanding-window CV across 4 folds, plus a strict 2024
 hold-out year for final evaluation.
 
-| model | notebook | best-round / trees | test ROC-AUC (weekly) |
-|---|---|---|---|
-| Logistic Regression | `code/notebooks/BloomWatchAI_LG.ipynb` | L-BFGS converged | 0.85 |
-| Random Forest | `code/notebooks/BloomWatchAI_RF.ipynb` | 500 trees | 0.82 |
-| XGBoost | `code/notebooks/BloomWatchAI_XGB.ipynb` | early-stopped | 0.83 |
+### Held-out 2024 test performance
+
+| model | accuracy | precision | recall | F1 | ROC-AUC |
+|---|---|---|---|---|---|
+| **Random Forest** | **0.958** | 0.75 | 1.00 | 0.86 | **1.00** |
+| **XGBoost** | 0.917 | 0.60 | 1.00 | 0.75 | 0.952 |
+| **Logistic Regression** | 0.792 | 0.375 | 1.00 | 0.55 | 0.952 |
+
+**Recall = 1.00 across all three models** — every bloom in the 2024 hold-out
+year was caught. Random Forest achieves 96% accuracy with a single false
+alarm out of 24 test weeks. See `results/weekly_forecast_metrics.md` for
+cross-validated results and confusion matrices.
 
 Top drivers converge across all three models:
 1. Rainy-days at t-1/t-2 (accumulated nutrient loading)
