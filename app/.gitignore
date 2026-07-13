@@ -1,0 +1,32 @@
+# Secrets — NEVER commit
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Live downloads (large NetCDFs, regenerated weekly)
+data/live/modis/*.nc
+data/live/imd/*.nc
+
+# ChromaDB — rebuild at server startup so vector space matches embedder
+data/chroma/
+
+# Snapshots regenerated weekly
+data/live/imd/imd_snapshot_*.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

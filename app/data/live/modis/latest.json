@@ -1,0 +1,9 @@
+{
+  "yyyyddd_start": "2026-05-25",
+  "yyyyddd_end": "2026-06-01",
+  "downloaded_at": "2026-07-10T15:26:17.578339+00:00",
+  "success": true,
+  "chl_filename": "SNPP_VIIRS.20260525_20260601.L3m.8D.CHL.chlor_a.4km.NRT.nc",
+  "sst_filename": "SNPP_VIIRS.20260525_20260601.L3m.8D.SST.sst.4km.nc",
+  "source": "VIIRS-SNPP NRT (MODIS-Aqua retired Feb 2025)"
+}

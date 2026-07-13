@@ -1,0 +1,24 @@
+{
+  "window_start": "2026-05-25",
+  "window_end": "2026-06-01",
+  "computed_at": "2026-07-10T15:26:23.140049+00:00",
+  "source": "imd_cumulative_snapshot",
+  "regions": {
+    "Kerala": {
+      "rainfall_mm_total_mean": 14.455555555555556,
+      "rainfall_mm_total_min": 9.4,
+      "rainfall_mm_total_max": 20.0,
+      "rainfall_mm_max_daily": 0.5,
+      "rainy_days_mean": 7.111111111111111,
+      "rainfall_n_cells": 9
+    },
+    "Karnataka": {
+      "rainfall_mm_total_mean": 8.466666666666667,
+      "rainfall_mm_total_min": 6.7,
+      "rainfall_mm_total_max": 10.5,
+      "rainfall_mm_max_daily": 0.2625,
+      "rainy_days_mean": 2.6666666666666665,
+      "rainfall_n_cells": 3
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "model_version": "bloomwatch-xgb-v1",
+  "trained_at": "2026-07-10T12:58:06.538414+00:00",
+  "computed_at": "2026-07-10T15:26:26.568176+00:00",
+  "window_start": "2026-05-25",
+  "window_end": "2026-06-01",
+  "forecast_target": "P(bloom in next 8-day window)",
+  "regions": {
+    "Karnataka": {
+      "P_bloom_next_week": 0.0124,
+      "risk_band": "Low",
+      "confidence_note": "Raw probability, un-recalibrated. On 2024 hold-out this model achieved AUC 0.83, ECE 0.07, Brier 0.09 \u2014 post-hoc calibration did not improve it."
+    },
+    "Kerala": {
+      "P_bloom_next_week": 0.0132,
+      "risk_band": "Low",
+      "confidence_note": "Raw probability, un-recalibrated. On 2024 hold-out this model achieved AUC 0.83, ECE 0.07, Brier 0.09 \u2014 post-hoc calibration did not improve it."
+    }
+  }
+}

@@ -1,0 +1,43 @@
+name: Weekly BloomWatch refresh
+
+on:
+  schedule:
+    # Every Friday 03:00 UTC (08:30 IST) — MODIS 8-day usually posts by Thursday
+    - cron: '0 3 * * 5'
+  workflow_dispatch: {}
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bloomwatch-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Run refresh pipeline
+        env:
+          EARTHDATA_USER: ${{ secrets.EARTHDATA_USER }}
+          EARTHDATA_PASS: ${{ secrets.EARTHDATA_PASS }}
+        run: python scripts/refresh_weekly.py
+
+      - name: Commit updated forecast
+        run: |
+          git config user.name "bloomwatch-bot"
+          git config user.email "bot@bloomwatch.local"
+          git add data/current_forecast.json data/live/modis/latest.json data/live/imd/current_window.json || true
+          if git diff --cached --quiet; then
+            echo "No changes."
+          else
+            git commit -m "Weekly refresh: $(date -u +%Y-%m-%d)"
+            git push
+          fi
