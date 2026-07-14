@@ -1,4 +1,4 @@
-name: Weekly BloomWatch refresh
+name: Weekly BloomWatch refresh + retrain
 
 on:
   schedule:
@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: bloomwatch-app
+        working-directory: app
     steps:
       - uses: actions/checkout@v4
 
@@ -20,33 +20,33 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
+          cache-dependency-path: app/requirements.txt
 
       - name: Install deps
         run: pip install -r requirements.txt
 
-      - name: Run refresh pipeline (fetch VIIRS + IMD + inference)
+      - name: Run refresh pipeline (VIIRS + IMD + inference)
         env:
           EARTHDATA_USER: ${{ secrets.EARTHDATA_USER }}
           EARTHDATA_PASS: ${{ secrets.EARTHDATA_PASS }}
         run: python scripts/refresh_weekly.py
+        continue-on-error: true
 
-      - name: Rolling XGBoost retrain (Option A — 6yr window + drift guard)
+      - name: Rolling XGBoost retrain (Option A — monitor-only for first month)
         env:
-          # MONITOR_ONLY=1 → log what the retrain WOULD do without replacing
-          # the deployed model. Recommended for the first ~4 weeks of live
-          # operation. Remove this env var (or set to 0) once you're confident
-          # the retrain is producing sensible outputs.
           RETRAIN_MONITOR_ONLY: "1"
           LLM_MODE: local
-        run: python scripts/retrain_weekly.py || echo "retrain skipped (drift guard or insufficient data)"
+        run: python scripts/retrain_weekly.py
+        continue-on-error: true
 
-      - name: Commit updated forecast + model
+      - name: Commit updated forecast + shadow models
         run: |
           git config user.name "bloomwatch-bot"
           git config user.email "bot@bloomwatch.local"
-          git add data/current_forecast.json data/live/modis/latest.json data/live/imd/current_window.json models/xgb_bloom.pkl models/xgb_bloom.meta.json models/history/ || true
+          cd ..
+          git add app/data/current_forecast.json app/data/live/modis/latest.json app/data/live/imd/current_window.json app/data/historical/revised_master_dts_weekly.csv app/models/xgb_bloom.pkl app/models/xgb_bloom.meta.json app/models/history/ 2>/dev/null || true
           if git diff --cached --quiet; then
-            echo "No changes."
+            echo "No changes to commit."
           else
             git commit -m "Weekly refresh + retrain: $(date -u +%Y-%m-%d)"
             git push
