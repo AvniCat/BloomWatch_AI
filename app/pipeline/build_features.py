@@ -155,6 +155,29 @@ def main() -> int:
         cur_start = current["date_start"].iloc[0]
         hist = hist[hist["date_start"] != cur_start].reset_index(drop=True)
 
+    # ---- Live-data append: grow the historical CSV each real Friday refresh ----
+    # This enables the weekly rolling retrain to actually see new data. Only append
+    # for real live runs (not simulated) and only when the current week isn't
+    # already in the historical CSV.
+    if not modis_latest.get("simulated"):
+        cur_start = current["date_start"].iloc[0]
+        already_present = ((hist["date_start"] == cur_start).any()
+                           and hist[hist["date_start"] == cur_start]["region"].nunique() == len(current))
+        if not already_present:
+            # Compute chl-a-derived bloom label from observed chl_a_mean
+            current["bloom"] = (current["chlor_a_mean"].fillna(0) > 2.0).astype(int)
+            current["bloom_or_documented"] = (
+                current["bloom"] | (current["hab_event_documented"] == 1).astype(int)
+            ).astype(int)
+            # Concat and dedupe by (region, date_start) — keep the newer row
+            grown = pd.concat([hist, current], ignore_index=True)
+            grown = grown.sort_values(["region", "date_start"]).drop_duplicates(
+                subset=["region", "date_start"], keep="last"
+            ).reset_index(drop=True)
+            grown.to_csv(HISTORICAL_CSV, index=False)
+            print(f"Appended current week to historical CSV → now {len(grown)} rows")
+            hist = grown
+
     # Recompute rolling HAB event history
     combined = pd.concat([hist, current], ignore_index=True)
     combined = combined.sort_values(["region", "date_start"]).reset_index(drop=True)

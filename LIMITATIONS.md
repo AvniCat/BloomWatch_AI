@@ -195,6 +195,41 @@ calibration identified in L1."*
 
 ---
 
+## L5 — Model versioning and continuous retraining
+
+**Claim we cannot make:** *"The reported AUC 0.83 and ECE 0.07 hold for the
+model in production at any given moment."*
+
+**What the data supports:** the reported metrics reflect the initial model
+trained on the static 2020–2024 dataset. The **deployed model is retrained
+weekly on a rolling six-year window** using the GitHub Actions cron in
+`.github/workflows/refresh.yml`. Every retrain is subject to a drift guard:
+if held-out AUC on the trailing 90 days drops by more than 5% versus the
+previously-deployed model, the retrain is refused and the older model
+remains active. Every previous deployed model is archived to
+`models/history/` for manual rollback. Current model status is queryable via
+the `/model_status` API endpoint.
+
+**During the first month of live operation the retrain runs in monitor-only
+mode**, saving shadow models to `models/history/` without replacing
+production. Once we have accumulated four consecutive successful retrains
+without drift-guard trips, monitor mode is disabled and the deployed model
+begins to update weekly.
+
+**Practical consequence:** the model in production at any given moment may
+have slightly different metrics than the ones reported in this paper. The
+direction of drift is expected to be positive (accuracy improving as more
+labelled weeks accumulate), but we do not guarantee it.
+
+**How the paper must frame this:** *"Reported performance metrics are frozen
+at the initial 2020–2024 training. The deployed model retrains weekly on a
+rolling six-year window with automated drift-guard protection. Live model
+performance is queryable via the `/model_status` API endpoint. Substantial
+divergence from published metrics is expected as the model adapts to sensor
+changes, seasonal variation, and evolving bloom patterns."*
+
+---
+
 ## Summary — what the project honestly demonstrates
 
 - **A working weekly bloom-risk forecast pipeline** for Kerala + Karnataka,

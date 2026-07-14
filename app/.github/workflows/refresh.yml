@@ -32,8 +32,11 @@ jobs:
 
       - name: Rolling XGBoost retrain (Option A — 6yr window + drift guard)
         env:
-          # Passing GEMINI/OLLAMA vars silences any env-driven config warnings
-          # but retrain script itself only needs read access to the historical CSV
+          # MONITOR_ONLY=1 → log what the retrain WOULD do without replacing
+          # the deployed model. Recommended for the first ~4 weeks of live
+          # operation. Remove this env var (or set to 0) once you're confident
+          # the retrain is producing sensible outputs.
+          RETRAIN_MONITOR_ONLY: "1"
           LLM_MODE: local
         run: python scripts/retrain_weekly.py || echo "retrain skipped (drift guard or insufficient data)"
 

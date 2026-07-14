@@ -9,6 +9,7 @@ can be rolled back manually with a single copy.
 """
 from __future__ import annotations
 import json
+import os
 import shutil
 import sys
 from datetime import datetime, timedelta, timezone
@@ -119,17 +120,33 @@ def main() -> int:
             print(f"Old model remains active. Investigate before next retrain.")
             return 3
 
-    # ---- Archive previous model ----
-    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
-    if MODEL_PATH.exists():
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        archived = HISTORY_DIR / f"xgb_bloom_{stamp}.pkl"
-        shutil.copy2(MODEL_PATH, archived)
-        print(f"Archived previous model → {archived.name}")
+    # ---- Monitor-only mode ----
+    # For the first month of live operation we recommend running with
+    # RETRAIN_MONITOR_ONLY=1 so the script logs what it WOULD deploy but does
+    # not actually replace the deployed model. Once you've watched the numbers
+    # for a few weeks and are confident the retrain is behaving, unset the
+    # environment variable to enable real deployment.
+    monitor_only = os.getenv("RETRAIN_MONITOR_ONLY", "0") == "1"
 
-    # ---- Deploy new model ----
-    joblib.dump(new_model, MODEL_PATH)
-    print(f"Deployed new model → {MODEL_PATH.name}")
+    if monitor_only:
+        # Persist a shadow model for diagnostics but do not replace production
+        HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+        shadow = HISTORY_DIR / f"xgb_bloom_shadow_{datetime.now(timezone.utc):%Y%m%d_%H%M%S}.pkl"
+        joblib.dump(new_model, shadow)
+        print(f"MONITOR-ONLY mode: shadow model saved to {shadow.name}, "
+              f"production model unchanged")
+    else:
+        # ---- Archive previous model ----
+        HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+        if MODEL_PATH.exists():
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            archived = HISTORY_DIR / f"xgb_bloom_{stamp}.pkl"
+            shutil.copy2(MODEL_PATH, archived)
+            print(f"Archived previous model → {archived.name}")
+
+        # ---- Deploy new model ----
+        joblib.dump(new_model, MODEL_PATH)
+        print(f"Deployed new model → {MODEL_PATH.name}")
 
     # ---- Metadata ----
     meta = {
@@ -151,9 +168,15 @@ def main() -> int:
         "n_features":            len(feat_cols),
         "xgb_params":            XGB_PARAMS,
         "drift_check_passed":    True,
+        "monitor_only":          monitor_only,
     }
-    MODEL_META_PATH.write_text(json.dumps(meta, indent=2))
-    print(f"Wrote metadata → {MODEL_META_PATH.name}")
+    if not monitor_only:
+        MODEL_META_PATH.write_text(json.dumps(meta, indent=2))
+        print(f"Wrote metadata → {MODEL_META_PATH.name}")
+    else:
+        shadow_meta = HISTORY_DIR / f"xgb_bloom_shadow_{datetime.now(timezone.utc):%Y%m%d_%H%M%S}.meta.json"
+        shadow_meta.write_text(json.dumps(meta, indent=2))
+        print(f"Shadow metadata → {shadow_meta.name}")
     return 0
 
 
