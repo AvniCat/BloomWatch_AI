@@ -24,20 +24,27 @@ jobs:
       - name: Install deps
         run: pip install -r requirements.txt
 
-      - name: Run refresh pipeline
+      - name: Run refresh pipeline (fetch VIIRS + IMD + inference)
         env:
           EARTHDATA_USER: ${{ secrets.EARTHDATA_USER }}
           EARTHDATA_PASS: ${{ secrets.EARTHDATA_PASS }}
         run: python scripts/refresh_weekly.py
 
-      - name: Commit updated forecast
+      - name: Rolling XGBoost retrain (Option A — 6yr window + drift guard)
+        env:
+          # Passing GEMINI/OLLAMA vars silences any env-driven config warnings
+          # but retrain script itself only needs read access to the historical CSV
+          LLM_MODE: local
+        run: python scripts/retrain_weekly.py || echo "retrain skipped (drift guard or insufficient data)"
+
+      - name: Commit updated forecast + model
         run: |
           git config user.name "bloomwatch-bot"
           git config user.email "bot@bloomwatch.local"
-          git add data/current_forecast.json data/live/modis/latest.json data/live/imd/current_window.json || true
+          git add data/current_forecast.json data/live/modis/latest.json data/live/imd/current_window.json models/xgb_bloom.pkl models/xgb_bloom.meta.json models/history/ || true
           if git diff --cached --quiet; then
             echo "No changes."
           else
-            git commit -m "Weekly refresh: $(date -u +%Y-%m-%d)"
+            git commit -m "Weekly refresh + retrain: $(date -u +%Y-%m-%d)"
             git push
           fi

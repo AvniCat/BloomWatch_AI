@@ -77,6 +77,30 @@ def providers() -> dict:
     return provider_status()
 
 
+@app.get("/model_status")
+def model_status() -> dict:
+    """Report on the currently-deployed model. Used by the frontend to display
+    live-training freshness and drift information transparently to the farmer."""
+    from config import MODEL_META_PATH
+    if not MODEL_META_PATH.exists():
+        return {"deployed": False, "reason": "no model metadata found"}
+    try:
+        meta = json.loads(MODEL_META_PATH.read_text())
+        # Add a light freshness computation
+        trained_at = meta.get("trained_at", "")
+        try:
+            trained_dt = datetime.fromisoformat(trained_at.replace("Z", "+00:00"))
+            age_days = (datetime.now(timezone.utc) - trained_dt).days
+            meta["model_age_days"] = age_days
+            meta["is_stale"] = age_days > 14
+        except Exception:
+            meta["model_age_days"] = None
+            meta["is_stale"] = None
+        return meta
+    except Exception as e:
+        return {"deployed": False, "error": str(e)}
+
+
 @app.get("/forecast")
 def forecast(region: Optional[str] = Query(default=None, description="Kerala | Karnataka")) -> dict:
     if not CURRENT_FORECAST_PATH.exists():
