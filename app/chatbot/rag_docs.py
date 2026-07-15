@@ -240,6 +240,60 @@ STATIC_DOCS: list[dict] = [
             "written confirmation from the CMFRI officer that visits."
         ),
     },
+    {
+        "id": "model_limitations",
+        "topic": "limitations",
+        "text": (
+            "HONEST LIMITATIONS of the BloomWatch AI model — read this before "
+            "answering any question about what the model can or cannot do.\n"
+            "\n"
+            "(1) TRICHODESMIUM BLIND SPOT — CRITICAL: BloomWatch CANNOT reliably "
+            "detect Trichodesmium blooms from satellite chlorophyll-a alone. "
+            "Trichodesmium is a nitrogen-fixing cyanobacterium whose photopigments "
+            "(phycoerythrin, phycocyanin) sit OUTSIDE the standard chl-a retrieval "
+            "bands used by VIIRS-SNPP. Cross-validation against 4 CMFRI-documented "
+            "events (2020-2024) shows that only 1 of 4 events crossed our chl-a > 2 "
+            "mg/m3 threshold. The 2023 Kochi and 2024 Kochi Trichodesmium blooms "
+            "were BOTH missed by the satellite proxy (chl-a mean 0.19 and 0.13 "
+            "respectively — well below threshold). Trichodesmium blooms are "
+            "exactly the blooms most damaging to Kerala's shellfish because they "
+            "cause hypoxia-driven mass mortality at bloom collapse. Farmers "
+            "relying on BloomWatch alone would receive FALSE-NEGATIVE warnings "
+            "for these events. Always cross-check with visual water color "
+            "(brownish-red, rust, sawdust-like clumps) and CMFRI advisories.\n"
+            "\n"
+            "(2) BLOOM DEFINITION IS A PROXY: The model predicts elevated-"
+            "chlorophyll weeks (chl-a > 2 mg/m3 per 8-day satellite window), NOT "
+            "confirmed toxic HAB events. The paper title should be read as "
+            "'elevated bloom risk forecasting,' not 'toxic HAB prediction.'\n"
+            "\n"
+            "(3) SMALL DATASET: Only 5 years of data (2020-2024, 460 weekly rows "
+            "across 2 regions). Cannot claim generalisation across ENSO cycles or "
+            "multi-decadal monsoon trends. Only 4 CMFRI-documented bloom events "
+            "in the window.\n"
+            "\n"
+            "(4) BIDIRECTIONAL CALIBRATION ERROR: The model UNDER-predicts moderate "
+            "risk (predictions near 0.15 correspond to empirical rate of 0.28) and "
+            "OVER-predicts high risk (predictions near 0.65 correspond to empirical "
+            "rate of 0.43). This is why we present risk BANDS rather than raw "
+            "percentages, and why any raw probability above 0.15 should be treated "
+            "as an elevated-caution flag.\n"
+            "\n"
+            "(5) CLOUD COVER: Optical satellite retrievals fail under persistent "
+            "monsoon cloud cover (June-September). The 2022 Karnataka event was "
+            "missed for this reason.\n"
+            "\n"
+            "(6) COVERAGE: Kerala and Karnataka coasts only. No forecast is "
+            "available for Tamil Nadu, Andhra Pradesh, Goa, Gujarat, or any "
+            "other Indian state at this time.\n"
+            "\n"
+            "When a user asks whether the model can detect a SPECIFIC bloom type, "
+            "SPECIES, or REGION — check this document first. Do not claim "
+            "detection capability that the model does not have. Being honest about "
+            "the Trichodesmium blind spot is more valuable to the farmer than "
+            "false reassurance."
+        ),
+    },
 ]
 
 

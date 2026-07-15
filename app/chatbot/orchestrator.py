@@ -37,6 +37,11 @@ Rules:
 - Keep answers under 6 sentences unless the question demands more.
 - Never invent a bloom event, closure date, or CMFRI advisory. If it's not in the
   evidence, it doesn't exist for you.
+- HONESTY OVER REASSURANCE: If a LIMITATIONS block appears in the evidence, you
+  MUST reflect those limitations in your answer. In particular, do not claim the
+  model can detect Trichodesmium, does not have a blind spot, or covers regions
+  outside Kerala/Karnataka if the limitations doc says otherwise. False
+  reassurance about capability is worse than admitting a gap.
 - Detect the farmer's language from the QUESTION. If the question is in English,
   answer in English. If it is in Malayalam, answer in Malayalam. If it is in
   Kannada, answer in Kannada. Do not switch languages without being asked.
@@ -137,6 +142,29 @@ def answer(question: str, region_hint: str | None = None) -> dict:
     # RAG retrieval — filter by region if it's a history question about a specific area
     filter_region = region if route == "history" else None
     hits = retrieve(question, k=4, region=filter_region)
+
+    # Force-include the limitations doc for capability / species / coverage questions.
+    # These are exactly the questions where the model has historically over-claimed
+    # (e.g. saying it can detect Trichodesmium when it cannot).
+    _CAPABILITY_TRIGGERS = [
+        "can your model", "can the model", "does your model", "does the model",
+        "can bloomwatch", "does bloomwatch", "detect", "trichodesmium",
+        "noctiluca", "alexandrium", "cyanobacter", "species", "which blooms",
+        "what blooms", "blind spot", "limitation", "accurate", "accuracy",
+        "reliable", "coverage", "cover", "chennai", "tamil nadu",
+        "andhra", "goa", "gujarat", "mumbai", "chennai", "outside",
+    ]
+    if any(t in q_lower for t in _CAPABILITY_TRIGGERS):
+        try:
+            limits_hits = retrieve("model limitations trichodesmium blind spot", k=2)
+            existing_ids = {h["id"] for h in hits}
+            for lh in limits_hits:
+                if lh["id"] not in existing_ids and lh["meta"].get("topic") == "limitations":
+                    hits.insert(0, lh)  # put limitations at the top
+                    break
+        except Exception:
+            pass
+
     if hits:
         evidence_parts.append(_format_rag_evidence(hits))
         evidence_meta["rag_hits"] = [
