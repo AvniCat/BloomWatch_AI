@@ -64,7 +64,7 @@ def _gemini_embed(texts: list[str]) -> list[list[float]]:
     genai.configure(api_key=GEMINI_API_KEY)
     out = []
     for t in texts:
-        r = genai.embed_content(model="models/text-embedding-004", content=t)
+        r = genai.embed_content(model="models/gemini-embedding-001", content=t)
         out.append(r["embedding"])
     return out
 
