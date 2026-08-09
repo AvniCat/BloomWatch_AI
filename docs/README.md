@@ -1,10 +1,5 @@
 # Docs
 
-Project documents live here as they get produced. Suggested contents:
+- `BloomWatch_Research_Article.docx` — the full research paper (anonymized: no school/city/state disclosed, per IRIS guidelines).
 
-- `research_paper_draft.pdf` (or `.docx`) — the writeup / methodology
-- `pitch_deck.pdf` — slides for presentation
-- `poster.pdf`
-- any diagrams (`architecture.png`, dataset flow, etc.)
-
-Nothing is committed here yet.
+Poster and pitch deck to follow, pending review.

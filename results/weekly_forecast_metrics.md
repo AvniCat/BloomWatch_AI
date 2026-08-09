@@ -1,5 +1,14 @@
 # BloomWatch AI — Weekly 7-Day Forecast Metrics
 
+> **Superseded — do not cite these numbers.** This run used only 24
+> hold-out weeks with 3 positive samples, which is why ROC-AUC reads as a
+> perfect 1.00 below — a small-sample artifact, not a real result. The
+> paper's reported numbers (pooled AUC 0.809 across three rolling temporal
+> splits, N=276) live in [`per_split_accuracy.csv`](per_split_accuracy.csv),
+> [`power_analysis.csv`](power_analysis.csv), and
+> [`reliability_pooled.csv`](reliability_pooled.csv). This file is kept only
+> as a record of an earlier exploratory pass.
+
 Model performance on the 2024 held-out test year (`bloom_next_week` target,
 weekly 8-day resolution, Kerala + Karnataka coasts).
 
