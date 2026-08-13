@@ -43,7 +43,7 @@ it *would* become viable — see `LIMITATIONS.md` L1.
 
 - Frontend: https://bloom-watch-appai.lovable.app
 - Backend (FastAPI): https://bloomwatch-ai.onrender.com — `/health`, `/forecast`, `/model_status`, `/chat`
-- The forecast refreshes automatically every Friday via GitHub Actions (`app/.github/workflows`), with a 5% AUC drift guard before any retrained model replaces the deployed one.
+- The forecast refreshes automatically every Friday via GitHub Actions (`.github/workflows/refresh.yml`), with a 5% AUC drift guard before any retrained model replaces the deployed one.
 
 > An earlier deployment at `bloom-watch-ai-coastal.lovable.app` is retired —
 > use the link above everywhere (paper, poster, deck, portal submission).

@@ -141,7 +141,7 @@ should expect a 60% chance of bloom."*
 should be presented as *"Elevated"* (not "Low–Medium"), and probabilities
 above 0.5 should be presented as *"Elevated caution — model less reliable in
 this range"* (not "Very High"). This is implemented in
-`bloomwatch-app/pipeline/predict.py::qualitative_risk`.
+`app/pipeline/predict.py::qualitative_risk`.
 
 **Why the flattening happens:** at these sample sizes, the tail of the
 prediction distribution (few "confident-high" predictions per test set) is
