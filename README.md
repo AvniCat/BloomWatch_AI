@@ -12,7 +12,7 @@ the calibration sample-size floor, and a documented species-specific blind
 spot (standard chlorophyll retrieval misses Trichodesmium blooms — the ones
 most damaging to Kerala's shellfish industry).
 
-## Final reported results (2024 hold-out, pooled across 3 rolling temporal splits, N=276)
+## Final reported results (pooled across 3 rolling temporal validation splits, test years 2022 & 2024, N=276)
 
 | Metric | Value |
 |---|---|
@@ -22,6 +22,10 @@ most damaging to Kerala's shellfish industry).
 | Expected Calibration Error | 0.094 pooled (0.066 best-split) |
 | Precision / Recall | 0.487 / 0.404 pooled |
 | Dataset | 460 weekly rows × 2 regions, 2020–2024 |
+
+The best individual split (train 2020–2022, test 2024) reaches AUC 0.831 —
+report the pooled figures above as the headline number, not the best split
+alone; the paper does the same (see `LIMITATIONS.md`).
 
 Source of truth for these numbers: [`results/per_split_accuracy.csv`](results/per_split_accuracy.csv),
 [`results/power_analysis.csv`](results/power_analysis.csv),
