@@ -59,3 +59,15 @@ class GapingClassifier:
         model = build_model()
         model.load_state_dict(torch.load(path, map_location="cpu"))
         return cls(model)
+
+
+def apply_confidence_fallback(result: dict) -> dict:
+    """Below GAPING_CONFIDENCE_THRESHOLD, don't force a possibly-wrong call —
+    surface it as unclear so the orchestrator can route to a hedged reply
+    instead of a confident-sounding label."""
+    is_low = result["confidence"] < config.GAPING_CONFIDENCE_THRESHOLD
+    return {
+        **result,
+        "label": "unclear" if is_low else result["label"],
+        "fallback": is_low,
+    }

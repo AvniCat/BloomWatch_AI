@@ -48,3 +48,23 @@ def test_classifier_save_and_load_roundtrip():
         _make_test_image(img_path)
         result = loaded.predict(img_path)
         assert result["label"] in ("gaping", "closed")
+
+
+def test_confidence_fallback_triggers_below_threshold():
+    from pipeline.photo_diagnosis.model import apply_confidence_fallback
+    import config
+
+    low = {"label": "gaping", "confidence": config.GAPING_CONFIDENCE_THRESHOLD - 0.1}
+    result = apply_confidence_fallback(low)
+    assert result["fallback"] is True
+    assert result["label"] == "unclear"
+
+
+def test_confidence_fallback_not_triggered_above_threshold():
+    from pipeline.photo_diagnosis.model import apply_confidence_fallback
+    import config
+
+    high = {"label": "gaping", "confidence": config.GAPING_CONFIDENCE_THRESHOLD + 0.1}
+    result = apply_confidence_fallback(high)
+    assert result["fallback"] is False
+    assert result["label"] == "gaping"
