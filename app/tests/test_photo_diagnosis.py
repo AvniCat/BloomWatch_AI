@@ -68,3 +68,14 @@ def test_confidence_fallback_not_triggered_above_threshold():
     result = apply_confidence_fallback(high)
     assert result["fallback"] is False
     assert result["label"] == "gaping"
+
+
+def test_vision_label_is_callable_and_mockable(monkeypatch):
+    from chatbot import llm
+
+    def fake_gemini_vision(image_path, prompt):
+        return "gaping"
+
+    monkeypatch.setattr(llm, "_gemini_vision", fake_gemini_vision)
+    result = llm.vision_label("fake/path.jpg", "Is this shell open or closed?")
+    assert result == "gaping"

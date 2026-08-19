@@ -36,6 +36,16 @@ def _gemini_chat(prompt: str, system: str | None) -> str:
     return resp.text
 
 
+def _gemini_vision(image_path, prompt: str) -> str:
+    import google.generativeai as genai
+    import PIL.Image
+    genai.configure(api_key=GEMINI_API_KEY)
+    model = genai.GenerativeModel(GEMINI_MODEL)
+    img = PIL.Image.open(image_path)
+    resp = model.generate_content([prompt, img])
+    return resp.text.strip()
+
+
 # ---------- Ollama ----------
 def _ollama_chat(prompt: str, system: str | None) -> str:
     import ollama
@@ -87,6 +97,16 @@ def chat(prompt: str, system: str | None = None) -> str:
     except Exception as e:
         tried.append(f"Ollama: {type(e).__name__}: {e}")
     raise LLMError("All providers failed:\n  " + "\n  ".join(tried))
+
+
+def vision_label(image_path, prompt: str) -> str:
+    """Draft-label an image via Gemini vision. Used only for (a) speeding up
+    manual photo labeling during data collection and (b) generating
+    farmer-facing explanation text — never as an input to the trained
+    classifier's confidence score (see Global Constraints in the design
+    spec: blending calibrated + uncalibrated confidence is explicitly
+    rejected)."""
+    return _gemini_vision(image_path, prompt)
 
 
 def embed(texts: Iterable[str]) -> list[list[float]]:
