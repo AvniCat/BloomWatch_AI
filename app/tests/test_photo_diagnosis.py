@@ -79,3 +79,50 @@ def test_vision_label_is_callable_and_mockable(monkeypatch):
     monkeypatch.setattr(llm, "_gemini_vision", fake_gemini_vision)
     result = llm.vision_label("fake/path.jpg", "Is this shell open or closed?")
     assert result == "gaping"
+
+
+import csv
+
+
+def test_build_manifest_writes_expected_columns(monkeypatch, tmp_path):
+    from pipeline.photo_diagnosis.label_photos import build_manifest
+    from chatbot import llm
+
+    monkeypatch.setattr(llm, "vision_label", lambda path, prompt: "gaping")
+
+    photo_dir = tmp_path / "photos"
+    photo_dir.mkdir()
+    _make_test_image(photo_dir / "shell1.jpg")
+    _make_test_image(photo_dir / "shell2.jpg")
+
+    manifest_path = tmp_path / "manifest.csv"
+    count = build_manifest(photo_dir, source="self_collected", manifest_path=manifest_path)
+
+    assert count == 2
+    with open(manifest_path) as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 2
+    assert set(rows[0].keys()) == {"filepath", "source", "date", "draft_label", "human_label"}
+    assert rows[0]["draft_label"] == "gaping"
+    assert rows[0]["human_label"] == ""  # blank until a human fills it in
+    assert rows[0]["source"] == "self_collected"
+
+
+def test_build_manifest_appends_without_duplicating(monkeypatch, tmp_path):
+    from pipeline.photo_diagnosis.label_photos import build_manifest
+    from chatbot import llm
+
+    monkeypatch.setattr(llm, "vision_label", lambda path, prompt: "closed")
+
+    photo_dir = tmp_path / "photos"
+    photo_dir.mkdir()
+    _make_test_image(photo_dir / "shell1.jpg")
+
+    manifest_path = tmp_path / "manifest.csv"
+    build_manifest(photo_dir, source="self_collected", manifest_path=manifest_path)
+    count_second_run = build_manifest(photo_dir, source="self_collected", manifest_path=manifest_path)
+
+    assert count_second_run == 0  # shell1.jpg already in manifest, not re-added
+    with open(manifest_path) as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 1
