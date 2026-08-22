@@ -72,7 +72,13 @@ def bootstrap_ci(rows: list[dict], metric_fn, n_draws: int = 200, seed: int = 7)
     }
 
 
-def _train_head(rows: list[dict], epochs: int = 5, lr: float = 1e-3) -> nn.Module:
+def _train_head(rows: list[dict], epochs: int = 5, lr: float = 1e-3, seed: int = 7) -> nn.Module:
+    # Seeds both the fresh classification head's random init (build_model()'s
+    # nn.Linear, via GapingClassifier() below) and _TRAIN_AUGMENT's stochastic
+    # transforms, so accuracy is reproducible run-to-run rather than swinging
+    # wildly (observed 0/6 to 6/6 on identical synthetic data when unseeded).
+    # Same seed=7 convention already used by source_split/bootstrap_ci above.
+    torch.manual_seed(seed)
     clf = GapingClassifier()
     model = clf.model
     model.train()
@@ -99,11 +105,11 @@ def _train_head(rows: list[dict], epochs: int = 5, lr: float = 1e-3) -> nn.Modul
     return model
 
 
-def train_and_evaluate(manifest_path: Path, out_dir: Path) -> dict:
+def train_and_evaluate(manifest_path: Path, out_dir: Path, seed: int = 7) -> dict:
     rows = load_labeled_manifest(manifest_path)
-    train_rows, test_rows = source_split(rows)
+    train_rows, test_rows = source_split(rows, seed=seed)
 
-    model = _train_head(train_rows)
+    model = _train_head(train_rows, seed=seed)
     clf = GapingClassifier(model)
 
     for r in test_rows:

@@ -212,3 +212,16 @@ def test_train_and_evaluate_end_to_end(tmp_path):
     assert metrics["n_train"] > 0
     assert metrics["n_test"] > 0
     assert metrics["test_sources"]  # non-empty list of held-out sources
+
+
+def test_train_and_evaluate_is_deterministic_for_fixed_seed(tmp_path):
+    """Same seed, same data -> same accuracy. Guards against unseeded model
+    init / augmentation making the reported accuracy non-reproducible."""
+    from pipeline.photo_diagnosis.train import train_and_evaluate
+
+    manifest_path = _write_synthetic_manifest(tmp_path)
+
+    metrics_1 = train_and_evaluate(manifest_path, tmp_path / "out1", seed=7)
+    metrics_2 = train_and_evaluate(manifest_path, tmp_path / "out2", seed=7)
+
+    assert metrics_1["accuracy"] == metrics_2["accuracy"]
