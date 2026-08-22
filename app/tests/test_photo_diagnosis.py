@@ -126,3 +126,89 @@ def test_build_manifest_appends_without_duplicating(monkeypatch, tmp_path):
     with open(manifest_path) as f:
         rows = list(csv.DictReader(f))
     assert len(rows) == 1
+
+
+import random
+
+
+def _write_synthetic_manifest(tmp_path, n_per_source=6):
+    """Two sources, deterministic colors standing in for gaping vs closed,
+    so the tiny trained model can actually learn something real in the test
+    (not just prove the code runs) without needing real photos."""
+    photo_dir = tmp_path / "photos"
+    photo_dir.mkdir()
+    rows = []
+    random.seed(7)
+    for source in ("source_a", "source_b"):
+        for i in range(n_per_source):
+            label = "gaping" if i % 2 == 0 else "closed"
+            color = (200, 60, 60) if label == "gaping" else (60, 60, 200)
+            path = photo_dir / f"{source}_{i}.jpg"
+            _make_test_image(path, color=color)
+            rows.append({
+                "filepath": str(path.resolve()),
+                "source": source,
+                "date": "2026-08-01",
+                "draft_label": label,
+                "human_label": label,
+            })
+    manifest_path = tmp_path / "manifest.csv"
+    with open(manifest_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["filepath", "source", "date", "draft_label", "human_label"])
+        writer.writeheader()
+        writer.writerows(rows)
+    return manifest_path
+
+
+def test_load_labeled_manifest_filters_unlabeled(tmp_path):
+    from pipeline.photo_diagnosis.train import load_labeled_manifest
+
+    manifest_path = tmp_path / "manifest.csv"
+    with open(manifest_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["filepath", "source", "date", "draft_label", "human_label"])
+        writer.writeheader()
+        writer.writerow({"filepath": "a.jpg", "source": "s1", "date": "2026-01-01", "draft_label": "gaping", "human_label": "gaping"})
+        writer.writerow({"filepath": "b.jpg", "source": "s1", "date": "2026-01-01", "draft_label": "closed", "human_label": ""})
+
+    rows = load_labeled_manifest(manifest_path)
+    assert len(rows) == 1
+    assert rows[0]["filepath"] == "a.jpg"
+
+
+def test_source_split_never_mixes_sources_across_splits():
+    from pipeline.photo_diagnosis.train import source_split
+
+    rows = (
+        [{"source": "s1", "filepath": f"a{i}.jpg", "human_label": "gaping"} for i in range(4)]
+        + [{"source": "s2", "filepath": f"b{i}.jpg", "human_label": "closed"} for i in range(4)]
+    )
+    train_rows, test_rows = source_split(rows)
+    train_sources = {r["source"] for r in train_rows}
+    test_sources = {r["source"] for r in test_rows}
+    assert train_sources.isdisjoint(test_sources)
+    assert len(train_rows) > 0 and len(test_rows) > 0
+
+
+def test_bootstrap_ci_returns_mean_lo_hi():
+    from pipeline.photo_diagnosis.train import bootstrap_ci
+
+    rows = [{"correct": 1} for _ in range(8)] + [{"correct": 0} for _ in range(2)]
+    result = bootstrap_ci(rows, metric_fn=lambda rs: sum(r["correct"] for r in rs) / len(rs), n_draws=50)
+    assert set(result.keys()) == {"mean", "lo", "hi"}
+    assert 0.0 <= result["lo"] <= result["mean"] <= result["hi"] <= 1.0
+
+
+def test_train_and_evaluate_end_to_end(tmp_path):
+    from pipeline.photo_diagnosis.train import train_and_evaluate
+
+    manifest_path = _write_synthetic_manifest(tmp_path)
+    out_dir = tmp_path / "out"
+    metrics = train_and_evaluate(manifest_path, out_dir)
+
+    assert (out_dir / "gaping_classifier.pt").exists()
+    assert (out_dir / "metrics.json").exists()
+    assert "accuracy" in metrics
+    assert set(metrics["accuracy"].keys()) == {"mean", "lo", "hi"}
+    assert metrics["n_train"] > 0
+    assert metrics["n_test"] > 0
+    assert metrics["test_sources"]  # non-empty list of held-out sources
