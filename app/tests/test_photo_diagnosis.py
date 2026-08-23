@@ -225,3 +225,61 @@ def test_train_and_evaluate_is_deterministic_for_fixed_seed(tmp_path):
     metrics_2 = train_and_evaluate(manifest_path, tmp_path / "out2", seed=7)
 
     assert metrics_1["accuracy"] == metrics_2["accuracy"]
+
+
+def test_diagnose_photo_assembles_evidence_and_calls_chat(monkeypatch, tmp_path):
+    from chatbot import orchestrator
+    from pipeline.photo_diagnosis import model as photo_model
+
+    img_path = tmp_path / "test.jpg"
+    _make_test_image(img_path)
+
+    class FakeClassifier:
+        def predict(self, path):
+            return {"label": "gaping", "confidence": 0.9}
+
+    monkeypatch.setattr(photo_model.GapingClassifier, "load", classmethod(lambda cls, p: FakeClassifier()))
+
+    captured = {}
+    def fake_chat(prompt, system=None):
+        captured["prompt"] = prompt
+        captured["system"] = system
+        return "Stop harvesting and contact your local CMFRI extension centre."
+    monkeypatch.setattr(orchestrator, "chat", fake_chat)
+    monkeypatch.setattr(orchestrator, "retrieve", lambda *a, **k: [])
+
+    result = orchestrator.diagnose_photo(img_path)
+
+    assert result["label"] == "gaping"
+    assert result["confidence"] == 0.9
+    assert result["fallback"] is False
+    assert result["route"] == "photo_diagnosis"
+    assert "gaping" in captured["prompt"].lower()
+    assert captured["system"] == orchestrator.SYSTEM_PROMPT
+
+
+def test_diagnose_photo_low_confidence_routes_to_fallback(monkeypatch, tmp_path):
+    from chatbot import orchestrator
+    from pipeline.photo_diagnosis import model as photo_model
+
+    img_path = tmp_path / "test.jpg"
+    _make_test_image(img_path)
+
+    class FakeClassifier:
+        def predict(self, path):
+            return {"label": "gaping", "confidence": 0.2}
+
+    monkeypatch.setattr(photo_model.GapingClassifier, "load", classmethod(lambda cls, p: FakeClassifier()))
+
+    captured = {}
+    def fake_chat(prompt, system=None):
+        captured["prompt"] = prompt
+        return "I couldn't get a clear read from that photo — try a closer, well-lit shot."
+    monkeypatch.setattr(orchestrator, "chat", fake_chat)
+    monkeypatch.setattr(orchestrator, "retrieve", lambda *a, **k: [])
+
+    result = orchestrator.diagnose_photo(img_path)
+
+    assert result["fallback"] is True
+    assert result["label"] == "unclear"
+    assert "unclear" in captured["prompt"].lower() or "couldn't" in captured["prompt"].lower()

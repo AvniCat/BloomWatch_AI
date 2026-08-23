@@ -19,9 +19,10 @@ from pathlib import Path
 from typing import Literal
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from config import CURRENT_FORECAST_PATH, REGIONS
+from config import CURRENT_FORECAST_PATH, REGIONS, PHOTO_MODEL_PATH
 from chatbot.llm import chat
 from chatbot.vectorstore import retrieve
+from pipeline.photo_diagnosis.model import GapingClassifier, apply_confidence_fallback
 
 
 SYSTEM_PROMPT = """You are the assistant inside BloomWatch AI, an early-warning app
@@ -204,6 +205,54 @@ def answer(question: str, region_hint: str | None = None) -> dict:
         "route": route,
         "region": region,
         "evidence": evidence_meta,
+    }
+
+
+def _format_photo_evidence(result: dict) -> str:
+    if result["fallback"]:
+        return (
+            "PHOTO ANALYSIS: The model could not confidently classify this "
+            "photo (low confidence). Tell the farmer you couldn't get a "
+            "clear read and suggest a closer, well-lit photo, focused "
+            "directly on the shell."
+        )
+    return (
+        f"PHOTO ANALYSIS: The shellfish in this photo was classified as "
+        f"'{result['label']}' (confidence {result['confidence']:.2f}). "
+        f"A 'gaping' shell that won't close is a possible distress or "
+        f"mortality sign. This is a screening signal, not a diagnosis — "
+        f"advise the farmer accordingly and recommend contacting their "
+        f"local CMFRI extension officer if they see this."
+    )
+
+
+def diagnose_photo(image_path: str | Path) -> dict:
+    """Classify a farmer-submitted shellfish photo and generate a
+    farmer-facing answer, mirroring answer()'s evidence-then-LLM pattern."""
+    clf = GapingClassifier.load(PHOTO_MODEL_PATH)
+    raw = clf.predict(image_path)
+    result = apply_confidence_fallback(raw)
+
+    evidence_parts = [_format_photo_evidence(result)]
+    hits = retrieve("shellfish gaping shell distress symptoms mortality", k=2)
+    if hits:
+        evidence_parts.append(_format_rag_evidence(hits))
+    evidence_text = "\n\n".join(evidence_parts)
+
+    prompt = (
+        f"A farmer submitted a photo of their shellfish for a health check.\n\n"
+        f"{evidence_text}\n\n"
+        f"Write a short, farmer-facing response explaining what this means "
+        f"and what to do next."
+    )
+    answer_text = chat(prompt, system=SYSTEM_PROMPT)
+
+    return {
+        "answer": answer_text,
+        "label": result["label"],
+        "confidence": result["confidence"],
+        "fallback": result["fallback"],
+        "route": "photo_diagnosis",
     }
 
 
