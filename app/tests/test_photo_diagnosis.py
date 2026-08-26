@@ -283,3 +283,38 @@ def test_diagnose_photo_low_confidence_routes_to_fallback(monkeypatch, tmp_path)
     assert result["fallback"] is True
     assert result["label"] == "unclear"
     assert "unclear" in captured["prompt"].lower() or "couldn't" in captured["prompt"].lower()
+
+
+def test_diagnose_photo_endpoint(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    import api.main as api_main
+
+    def fake_diagnose_photo(image_path):
+        return {"answer": "Looks fine.", "label": "closed", "confidence": 0.8, "fallback": False, "route": "photo_diagnosis"}
+    monkeypatch.setattr(api_main, "diagnose_photo_orchestrated", fake_diagnose_photo)
+
+    client = TestClient(api_main.app)
+    img_path = tmp_path / "test.jpg"
+    _make_test_image(img_path)
+
+    with open(img_path, "rb") as f:
+        resp = client.post("/diagnose-photo", files={"file": ("test.jpg", f, "image/jpeg")})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["label"] == "closed"
+    assert body["answer"] == "Looks fine."
+
+
+def test_diagnose_photo_endpoint_rejects_non_image(tmp_path):
+    from fastapi.testclient import TestClient
+    import api.main as api_main
+
+    client = TestClient(api_main.app)
+    bad_path = tmp_path / "notes.txt"
+    bad_path.write_text("hello")
+
+    with open(bad_path, "rb") as f:
+        resp = client.post("/diagnose-photo", files={"file": ("notes.txt", f, "text/plain")})
+
+    assert resp.status_code == 400

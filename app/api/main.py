@@ -14,13 +14,14 @@ from datetime import datetime, timezone
 
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from config import CURRENT_FORECAST_PATH, HISTORICAL_CSV, REGIONS
 from chatbot.orchestrator import answer as orchestrate
+from chatbot.orchestrator import diagnose_photo as diagnose_photo_orchestrated
 from chatbot.llm import provider_status
 from chatbot.vectorstore import build_index, CHROMA_DIR
 
@@ -145,6 +146,36 @@ def chat_endpoint(req: ChatRequest) -> ChatResponse:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Orchestrator error: {type(e).__name__}: {e}")
     return ChatResponse(**r)
+
+
+class PhotoDiagnosisResponse(BaseModel):
+    answer: str
+    label: str
+    confidence: float
+    fallback: bool
+
+
+@app.post("/diagnose-photo", response_model=PhotoDiagnosisResponse)
+def diagnose_photo_endpoint(file: UploadFile = File(...)) -> PhotoDiagnosisResponse:
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image")
+
+    import tempfile
+    suffix = Path(file.filename).suffix or ".jpg"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(file.file.read())
+        tmp_path = tmp.name
+
+    try:
+        r = diagnose_photo_orchestrated(tmp_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Photo diagnosis error: {type(e).__name__}: {e}")
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+    return PhotoDiagnosisResponse(
+        answer=r["answer"], label=r["label"], confidence=r["confidence"], fallback=r["fallback"],
+    )
 
 
 if __name__ == "__main__":
