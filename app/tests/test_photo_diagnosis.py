@@ -1,4 +1,5 @@
 """Tests for the shellfish photo-diagnosis feature."""
+import json
 import sys
 from pathlib import Path
 import tempfile
@@ -68,6 +69,79 @@ def test_confidence_fallback_not_triggered_above_threshold():
     result = apply_confidence_fallback(high)
     assert result["fallback"] is False
     assert result["label"] == "gaping"
+
+
+def test_confidence_band_maps_to_qualitative_labels():
+    from pipeline.photo_diagnosis.model import confidence_band
+
+    assert confidence_band({"confidence": 0.61}) == "Low"
+    assert confidence_band({"confidence": 0.8}) == "Moderate"
+    assert confidence_band({"confidence": 0.95}) == "High"
+
+
+def test_build_model_pretrained_false_skips_weights_download():
+    from pipeline.photo_diagnosis.model import build_model
+
+    model = build_model(pretrained=False)
+    assert model is not None
+    # Still has a 2-class head wired up, same as the pretrained path.
+    assert model.classifier[1].out_features == 2
+
+
+def test_classifier_load_checks_meta_labels_and_raises_on_mismatch(tmp_path):
+    import json as _json
+    from pipeline.photo_diagnosis.model import GapingClassifier
+
+    clf = GapingClassifier()
+    save_path = tmp_path / "model.pt"
+    clf.save(save_path)
+
+    meta_path = save_path.with_suffix(".meta.json")
+    meta_path.write_text(_json.dumps({
+        "labels": ["gaping", "closed"],  # deliberately reversed vs. real LABELS
+        "model_version": "test",
+        "trained_at": "2026-01-01T00:00:00+00:00",
+    }))
+
+    import pytest
+    with pytest.raises(ValueError, match="label"):
+        GapingClassifier.load(save_path)
+
+
+def test_classifier_load_proceeds_when_meta_file_absent(tmp_path):
+    """Saved/loaded models from before this fix (no meta sidecar) must keep
+    working — the meta check is opportunistic, not mandatory."""
+    from pipeline.photo_diagnosis.model import GapingClassifier
+
+    clf = GapingClassifier()
+    save_path = tmp_path / "model.pt"
+    clf.save(save_path)
+    assert not save_path.with_suffix(".meta.json").exists()
+
+    loaded = GapingClassifier.load(save_path)
+    img_path = tmp_path / "test.jpg"
+    _make_test_image(img_path)
+    result = loaded.predict(img_path)
+    assert result["label"] in ("gaping", "closed")
+
+
+def test_classifier_load_matching_meta_labels_succeeds(tmp_path):
+    import json as _json
+    from pipeline.photo_diagnosis.model import GapingClassifier, LABELS
+
+    clf = GapingClassifier()
+    save_path = tmp_path / "model.pt"
+    clf.save(save_path)
+
+    meta_path = save_path.with_suffix(".meta.json")
+    meta_path.write_text(_json.dumps({
+        "labels": LABELS,
+        "model_version": "test",
+        "trained_at": "2026-01-01T00:00:00+00:00",
+    }))
+
+    loaded = GapingClassifier.load(save_path)
+    assert loaded is not None
 
 
 def test_vision_label_is_callable_and_mockable(monkeypatch):
@@ -227,9 +301,113 @@ def test_train_and_evaluate_is_deterministic_for_fixed_seed(tmp_path):
     assert metrics_1["accuracy"] == metrics_2["accuracy"]
 
 
+def test_train_and_evaluate_reports_precision_recall_and_abstention(tmp_path):
+    """Design spec's Validation section requires accuracy, precision, and
+    recall, each with bootstrap CIs — not accuracy alone."""
+    from pipeline.photo_diagnosis.train import train_and_evaluate
+
+    manifest_path = _write_synthetic_manifest(tmp_path)
+    out_dir = tmp_path / "out"
+    metrics = train_and_evaluate(manifest_path, out_dir)
+
+    for key in ("accuracy", "precision", "recall", "abstention_rate"):
+        assert key in metrics
+        assert set(metrics[key].keys()) == {"mean", "lo", "hi"}
+
+    assert 0.0 <= metrics["abstention_rate"]["mean"] <= 1.0
+    assert "n_non_abstained" in metrics
+    assert metrics["n_non_abstained"] <= metrics["n_test"]
+
+    with open(out_dir / "metrics.json") as f:
+        written = json.load(f)
+    assert written == metrics
+
+
+def test_train_and_evaluate_evaluates_through_confidence_fallback(monkeypatch, tmp_path):
+    """Core of finding #1: accuracy must be scored on the SAME pipeline
+    production runs (predict() -> apply_confidence_fallback()), not raw
+    predict() alone. Forcing every test prediction into fallback should
+    zero out n_non_abstained and leave accuracy/precision/recall unscoreable
+    (None), while abstention_rate reports 1.0 — none of that would happen if
+    train.py were still scoring raw clf.predict() output directly."""
+    from pipeline.photo_diagnosis import train as train_mod
+    from pipeline.photo_diagnosis.model import GapingClassifier
+    import config
+
+    manifest_path = _write_synthetic_manifest(tmp_path)
+
+    monkeypatch.setattr(
+        GapingClassifier, "predict",
+        lambda self, path: {"label": "gaping", "confidence": config.GAPING_CONFIDENCE_THRESHOLD - 0.05},
+    )
+
+    out_dir = tmp_path / "out"
+    metrics = train_mod.train_and_evaluate(manifest_path, out_dir)
+
+    assert metrics["abstention_rate"]["mean"] == 1.0
+    assert metrics["n_non_abstained"] == 0
+    assert metrics["accuracy"] == {"mean": None, "lo": None, "hi": None}
+    assert metrics["precision"] == {"mean": None, "lo": None, "hi": None}
+    assert metrics["recall"] == {"mean": None, "lo": None, "hi": None}
+
+
+def test_train_and_evaluate_writes_photo_model_meta(tmp_path):
+    """Finding #7: a meta sidecar with labels/model_version/trained_at must
+    be written next to the checkpoint so GapingClassifier.load() can detect
+    a LABELS reorder."""
+    from pipeline.photo_diagnosis.train import train_and_evaluate
+    from pipeline.photo_diagnosis.model import LABELS
+
+    manifest_path = _write_synthetic_manifest(tmp_path)
+    out_dir = tmp_path / "out"
+    train_and_evaluate(manifest_path, out_dir)
+
+    meta_path = out_dir / "gaping_classifier.meta.json"
+    assert meta_path.exists()
+    meta = json.loads(meta_path.read_text())
+    assert meta["labels"] == LABELS
+    assert "model_version" in meta
+    assert "trained_at" in meta
+
+    # Loading the freshly-trained checkpoint should succeed cleanly since
+    # its own meta file's labels match the current LABELS.
+    from pipeline.photo_diagnosis.model import GapingClassifier
+    loaded = GapingClassifier.load(out_dir / "gaping_classifier.pt")
+    assert loaded is not None
+
+
+def test_train_head_reapplies_augmentation_each_epoch(monkeypatch, tmp_path):
+    """Finding #3: _TRAIN_AUGMENT must be re-applied fresh every epoch, not
+    once up front and reused — otherwise every epoch trains on an identical
+    tensor and the augmentation strategy described in the module docstring
+    isn't actually happening."""
+    from pipeline.photo_diagnosis import train as train_mod
+
+    manifest_path = _write_synthetic_manifest(tmp_path, n_per_source=2)
+    rows = train_mod.load_labeled_manifest(manifest_path)
+
+    call_count = {"n": 0}
+    real_augment = train_mod._TRAIN_AUGMENT
+
+    def counting_augment(img):
+        call_count["n"] += 1
+        return real_augment(img)
+
+    monkeypatch.setattr(train_mod, "_TRAIN_AUGMENT", counting_augment)
+
+    epochs = 4
+    train_mod._train_head(rows, epochs=epochs)
+
+    # One augmentation call per image per epoch — proves each epoch draws a
+    # fresh augmented tensor rather than reusing one computed before the loop.
+    assert call_count["n"] == len(rows) * epochs
+
+
 def test_diagnose_photo_assembles_evidence_and_calls_chat(monkeypatch, tmp_path):
     from chatbot import orchestrator
     from pipeline.photo_diagnosis import model as photo_model
+
+    monkeypatch.setattr(orchestrator, "_classifier_cache", None)  # isolate from other tests' cache
 
     img_path = tmp_path / "test.jpg"
     _make_test_image(img_path)
@@ -254,6 +432,7 @@ def test_diagnose_photo_assembles_evidence_and_calls_chat(monkeypatch, tmp_path)
     assert result["confidence"] == 0.9
     assert result["fallback"] is False
     assert result["route"] == "photo_diagnosis"
+    assert result["confidence_band"] in ("Low", "Moderate", "High")
     assert "gaping" in captured["prompt"].lower()
     assert captured["system"] == orchestrator.SYSTEM_PROMPT
 
@@ -261,6 +440,8 @@ def test_diagnose_photo_assembles_evidence_and_calls_chat(monkeypatch, tmp_path)
 def test_diagnose_photo_low_confidence_routes_to_fallback(monkeypatch, tmp_path):
     from chatbot import orchestrator
     from pipeline.photo_diagnosis import model as photo_model
+
+    monkeypatch.setattr(orchestrator, "_classifier_cache", None)  # isolate from other tests' cache
 
     img_path = tmp_path / "test.jpg"
     _make_test_image(img_path)
@@ -282,15 +463,97 @@ def test_diagnose_photo_low_confidence_routes_to_fallback(monkeypatch, tmp_path)
 
     assert result["fallback"] is True
     assert result["label"] == "unclear"
+    assert result["confidence_band"] == "N/A (unclear)"
     assert "unclear" in captured["prompt"].lower() or "couldn't" in captured["prompt"].lower()
+    # The raw confidence (0.2) belonged to the discarded "gaping" call and
+    # must never be surfaced as a number in the prompt sent to the LLM.
+    assert "0.2" not in captured["prompt"]
+
+
+def test_diagnose_photo_prompt_forbids_harvest_verdict(monkeypatch, tmp_path):
+    """The spec's 'never a safe-to-harvest / do-not-harvest verdict'
+    constraint must be an explicit instruction in the photo-diagnosis
+    prompt, not something left to the shared SYSTEM_PROMPT (which is also
+    used for general chat that does discuss harvest decisions)."""
+    from chatbot import orchestrator
+    from pipeline.photo_diagnosis import model as photo_model
+
+    monkeypatch.setattr(orchestrator, "_classifier_cache", None)
+
+    img_path = tmp_path / "test.jpg"
+    _make_test_image(img_path)
+
+    class FakeClassifier:
+        def predict(self, path):
+            return {"label": "gaping", "confidence": 0.95}
+
+    monkeypatch.setattr(photo_model.GapingClassifier, "load", classmethod(lambda cls, p: FakeClassifier()))
+
+    captured = {}
+    def fake_chat(prompt, system=None):
+        captured["prompt"] = prompt
+        return "Contact your local CMFRI extension officer."
+    monkeypatch.setattr(orchestrator, "chat", fake_chat)
+    monkeypatch.setattr(orchestrator, "retrieve", lambda *a, **k: [])
+
+    orchestrator.diagnose_photo(img_path)
+
+    assert "safe to harvest" in captured["prompt"].lower()
+
+
+def test_diagnose_photo_caches_classifier_across_calls(monkeypatch, tmp_path):
+    """The classifier should be loaded once and reused, not reloaded from
+    disk on every request (see model.py's build_model(pretrained=False) for
+    the other half of this fix — avoiding a re-download of ImageNet
+    weights)."""
+    from chatbot import orchestrator
+    from pipeline.photo_diagnosis import model as photo_model
+
+    monkeypatch.setattr(orchestrator, "_classifier_cache", None)
+
+    img_path = tmp_path / "test.jpg"
+    _make_test_image(img_path)
+
+    load_calls = {"n": 0}
+
+    class FakeClassifier:
+        def predict(self, path):
+            return {"label": "closed", "confidence": 0.95}
+
+    def fake_load(cls, p):
+        load_calls["n"] += 1
+        return FakeClassifier()
+
+    monkeypatch.setattr(photo_model.GapingClassifier, "load", classmethod(fake_load))
+    monkeypatch.setattr(orchestrator, "chat", lambda prompt, system=None: "ok")
+    monkeypatch.setattr(orchestrator, "retrieve", lambda *a, **k: [])
+
+    orchestrator.diagnose_photo(img_path)
+    orchestrator.diagnose_photo(img_path)
+
+    assert load_calls["n"] == 1
+
+
+def _touch_fake_model(tmp_path):
+    """A stand-in trained-model file, just so the endpoint's exists() check
+    passes — its contents are never actually read since diagnose_photo_
+    orchestrated is mocked in these tests."""
+    p = tmp_path / "gaping_classifier.pt"
+    p.write_bytes(b"fake")
+    return p
 
 
 def test_diagnose_photo_endpoint(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
     import api.main as api_main
 
+    monkeypatch.setattr(api_main, "PHOTO_MODEL_PATH", _touch_fake_model(tmp_path))
+
     def fake_diagnose_photo(image_path):
-        return {"answer": "Looks fine.", "label": "closed", "confidence": 0.8, "fallback": False, "route": "photo_diagnosis"}
+        return {
+            "answer": "Looks fine.", "label": "closed", "confidence": 0.8,
+            "confidence_band": "High", "fallback": False, "route": "photo_diagnosis",
+        }
     monkeypatch.setattr(api_main, "diagnose_photo_orchestrated", fake_diagnose_photo)
 
     client = TestClient(api_main.app)
@@ -304,6 +567,7 @@ def test_diagnose_photo_endpoint(monkeypatch, tmp_path):
     body = resp.json()
     assert body["label"] == "closed"
     assert body["answer"] == "Looks fine."
+    assert body["confidence_band"] == "High"
 
 
 def test_diagnose_photo_endpoint_rejects_non_image(tmp_path):
@@ -318,3 +582,45 @@ def test_diagnose_photo_endpoint_rejects_non_image(tmp_path):
         resp = client.post("/diagnose-photo", files={"file": ("notes.txt", f, "text/plain")})
 
     assert resp.status_code == 400
+
+
+def test_diagnose_photo_endpoint_returns_503_when_model_missing(monkeypatch, tmp_path):
+    """Mirrors the existing /forecast endpoint's clean 503 for 'not ready
+    yet' instead of an opaque 500 FileNotFoundError — no trained photo
+    model exists on disk yet at this point in the project."""
+    from fastapi.testclient import TestClient
+    import api.main as api_main
+
+    monkeypatch.setattr(api_main, "PHOTO_MODEL_PATH", tmp_path / "does_not_exist.pt")
+
+    client = TestClient(api_main.app)
+    img_path = tmp_path / "test.jpg"
+    _make_test_image(img_path)
+
+    with open(img_path, "rb") as f:
+        resp = client.post("/diagnose-photo", files={"file": ("test.jpg", f, "image/jpeg")})
+
+    assert resp.status_code == 503
+    assert "train.py" in resp.json()["detail"]
+
+
+def test_diagnose_photo_endpoint_rejects_oversized_upload(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    import api.main as api_main
+
+    monkeypatch.setattr(api_main, "PHOTO_MODEL_PATH", _touch_fake_model(tmp_path))
+    monkeypatch.setattr(api_main, "MAX_PHOTO_UPLOAD_BYTES", 1024)  # shrink cap so the test is fast
+
+    def fake_diagnose_photo(image_path):
+        raise AssertionError("diagnose_photo_orchestrated should not be called for an oversized upload")
+    monkeypatch.setattr(api_main, "diagnose_photo_orchestrated", fake_diagnose_photo)
+
+    client = TestClient(api_main.app)
+    oversized = b"x" * (1024 * 2)
+
+    resp = client.post(
+        "/diagnose-photo",
+        files={"file": ("big.jpg", oversized, "image/jpeg")},
+    )
+
+    assert resp.status_code == 413

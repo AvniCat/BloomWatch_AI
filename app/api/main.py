@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from config import CURRENT_FORECAST_PATH, HISTORICAL_CSV, REGIONS
+from config import CURRENT_FORECAST_PATH, HISTORICAL_CSV, REGIONS, PHOTO_MODEL_PATH
 from chatbot.orchestrator import answer as orchestrate
 from chatbot.orchestrator import diagnose_photo as diagnose_photo_orchestrated
 from chatbot.llm import provider_status
@@ -152,7 +152,11 @@ class PhotoDiagnosisResponse(BaseModel):
     answer: str
     label: str
     confidence: float
+    confidence_band: str
     fallback: bool
+
+
+MAX_PHOTO_UPLOAD_BYTES = 10 * 1024 * 1024  # 10MB — plenty for a phone photo
 
 
 @app.post("/diagnose-photo", response_model=PhotoDiagnosisResponse)
@@ -160,10 +164,27 @@ def diagnose_photo_endpoint(file: UploadFile = File(...)) -> PhotoDiagnosisRespo
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
 
+    if not PHOTO_MODEL_PATH.exists():
+        raise HTTPException(
+            status_code=503,
+            detail="Photo model not trained yet. Run pipeline/photo_diagnosis/train.py first.",
+        )
+
+    # Bounded read — a large upload must not be allowed to exhaust memory on
+    # the deployed container. Read one byte past the cap so we can tell
+    # "exactly at the limit" apart from "over the limit" without ever
+    # buffering more than MAX_PHOTO_UPLOAD_BYTES + 1 bytes.
+    data = file.file.read(MAX_PHOTO_UPLOAD_BYTES + 1)
+    if len(data) > MAX_PHOTO_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Upload exceeds {MAX_PHOTO_UPLOAD_BYTES // (1024 * 1024)}MB limit",
+        )
+
     import tempfile
     suffix = Path(file.filename).suffix or ".jpg"
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp.write(file.file.read())
+        tmp.write(data)
         tmp_path = tmp.name
 
     try:
@@ -174,7 +195,8 @@ def diagnose_photo_endpoint(file: UploadFile = File(...)) -> PhotoDiagnosisRespo
         Path(tmp_path).unlink(missing_ok=True)
 
     return PhotoDiagnosisResponse(
-        answer=r["answer"], label=r["label"], confidence=r["confidence"], fallback=r["fallback"],
+        answer=r["answer"], label=r["label"], confidence=r["confidence"],
+        confidence_band=r["confidence_band"], fallback=r["fallback"],
     )
 
 

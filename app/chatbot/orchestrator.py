@@ -22,7 +22,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from config import CURRENT_FORECAST_PATH, REGIONS, PHOTO_MODEL_PATH
 from chatbot.llm import chat
 from chatbot.vectorstore import retrieve
-from pipeline.photo_diagnosis.model import GapingClassifier, apply_confidence_fallback
+# NOTE: pipeline.photo_diagnosis.model (torch/torchvision) is intentionally
+# NOT imported at module level — see diagnose_photo() below, which imports
+# it lazily so requests that never touch the photo feature (including API
+# boot) don't pay for loading torch+torchvision. Matches this codebase's
+# established lazy-heavy-import convention (chatbot/vectorstore.py's
+# _client(), chatbot/llm.py's _gemini_chat(), the /forecast endpoint's
+# in-handler pandas import).
 
 
 SYSTEM_PROMPT = """You are the assistant inside BloomWatch AI, an early-warning app
@@ -208,7 +214,7 @@ def answer(question: str, region_hint: str | None = None) -> dict:
     }
 
 
-def _format_photo_evidence(result: dict) -> str:
+def _format_photo_evidence(result: dict, band: str | None) -> str:
     if result["fallback"]:
         return (
             "PHOTO ANALYSIS: The model could not confidently classify this "
@@ -216,9 +222,14 @@ def _format_photo_evidence(result: dict) -> str:
             "clear read and suggest a closer, well-lit photo, focused "
             "directly on the shell."
         )
+    # Hedged band only — never the raw confidence number. When fallback is
+    # True, `result['confidence']` is the score of the label that was just
+    # discarded (e.g. a suppressed "gaping" call under "unclear"), so it
+    # must never be surfaced here — the branch above returns before this
+    # line runs in that case.
     return (
         f"PHOTO ANALYSIS: The shellfish in this photo was classified as "
-        f"'{result['label']}' (confidence {result['confidence']:.2f}). "
+        f"'{result['label']}' (confidence: {band}). "
         f"A 'gaping' shell that won't close is a possible distress or "
         f"mortality sign. This is a screening signal, not a diagnosis — "
         f"advise the farmer accordingly and recommend contacting their "
@@ -226,14 +237,32 @@ def _format_photo_evidence(result: dict) -> str:
     )
 
 
+_classifier_cache = None  # lazily-populated GapingClassifier; see diagnose_photo() below
+
+
 def diagnose_photo(image_path: str | Path) -> dict:
     """Classify a farmer-submitted shellfish photo and generate a
     farmer-facing answer, mirroring answer()'s evidence-then-LLM pattern."""
-    clf = GapingClassifier.load(PHOTO_MODEL_PATH)
+    global _classifier_cache
+
+    # Lazy import: pipeline.photo_diagnosis.model pulls in torch/torchvision,
+    # which we don't want to pay for at API boot for requests that never
+    # touch this feature (see the NOTE near the top-of-file imports).
+    from pipeline.photo_diagnosis.model import apply_confidence_fallback, confidence_band, GapingClassifier
+
+    # Cache the loaded classifier across requests — GapingClassifier.load()
+    # reads the checkpoint from disk every call otherwise, and (before the
+    # pretrained=False fix in model.py) used to re-download ImageNet weights
+    # on every single request.
+    if _classifier_cache is None:
+        _classifier_cache = GapingClassifier.load(PHOTO_MODEL_PATH)
+    clf = _classifier_cache
+
     raw = clf.predict(image_path)
     result = apply_confidence_fallback(raw)
+    band = None if result["fallback"] else confidence_band(result)
 
-    evidence_parts = [_format_photo_evidence(result)]
+    evidence_parts = [_format_photo_evidence(result, band)]
     hits = retrieve("shellfish gaping shell distress symptoms mortality", k=2)
     if hits:
         evidence_parts.append(_format_rag_evidence(hits))
@@ -243,7 +272,10 @@ def diagnose_photo(image_path: str | Path) -> dict:
         f"A farmer submitted a photo of their shellfish for a health check.\n\n"
         f"{evidence_text}\n\n"
         f"Write a short, farmer-facing response explaining what this means "
-        f"and what to do next."
+        f"and what to do next. Do not tell the farmer whether the catch is "
+        f"safe to harvest or not — that is a food-safety call this app "
+        f"never makes. Describe what was seen and recommend contacting the "
+        f"CMFRI extension officer for anything concerning."
     )
     answer_text = chat(prompt, system=SYSTEM_PROMPT)
 
@@ -251,6 +283,7 @@ def diagnose_photo(image_path: str | Path) -> dict:
         "answer": answer_text,
         "label": result["label"],
         "confidence": result["confidence"],
+        "confidence_band": "N/A (unclear)" if result["fallback"] else band,
         "fallback": result["fallback"],
         "route": "photo_diagnosis",
     }
