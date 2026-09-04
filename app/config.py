@@ -50,3 +50,11 @@ XGB_PARAMS = dict(
 )
 
 MODEL_VERSION = "bloomwatch-xgb-v1"
+
+# Photo diagnosis (gaping-shell classifier)
+PHOTO_MODEL_DIR = APP_ROOT / "models" / "photo_diagnosis"
+PHOTO_MODEL_PATH = Path(os.getenv("PHOTO_MODEL_PATH", PHOTO_MODEL_DIR / "gaping_classifier.pt"))
+PHOTO_MODEL_META_PATH = PHOTO_MODEL_PATH.with_suffix(".meta.json")
+PHOTO_MANIFEST_PATH = Path(os.getenv("PHOTO_MANIFEST_PATH", DATA_DIR / "photo_diagnosis/manifest.csv"))
+GAPING_CONFIDENCE_THRESHOLD = float(os.getenv("GAPING_CONFIDENCE_THRESHOLD", "0.6"))
+PHOTO_MODEL_VERSION = "bloomwatch-gaping-v1"
